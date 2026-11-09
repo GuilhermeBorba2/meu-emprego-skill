@@ -20,7 +20,7 @@ O Gerente é sempre um subagente novo, que não escreveu o currículo, para a av
 Requisitos: [Claude Code](https://claude.com/claude-code) e Python 3.9+ com `reportlab` (opcional: LaTeX/`pdflatex` para o template completo).
 
 ```bash
-git clone https://github.com/<seu-usuario>/meu-emprego-skill.git
+git clone https://github.com/GuilhermeBorba2/meu-emprego-skill.git
 pip install -r meu-emprego-skill/skills/meu-emprego/scripts/requirements.txt
 ```
 
