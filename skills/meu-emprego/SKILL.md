@@ -66,7 +66,9 @@ Prompt: reposicionar o currículo para a vaga sem inventar. `summary` de 3–4 f
 - **Editor**: aplicar o feedback no JSON sem fabricar (lacuna real continua lacuna), mesmas posições e mesma contagem de `work`, nada de métrica nova. Gera também `coverage_review.md`: por posição, temas das fontes → bullets finais, e omissões (zero de evidência profissional).
 - Pare quando: nota ≥ 8.5; ou uma revisão não sobe a nota; ou 3 revisões. Restaure a versão de **melhor nota** para `json/resume.json`.
 
-Depois do loop, renderize:
+Depois do loop, antes de renderizar, confira você mesmo o JSON: nenhum verbo em terceira pessoa ("Implementou", "Atuou"), e nomes de categoria em `skills` com no máximo ~15 caracteres (ex.: "Backend", "Mensageria e BD", "Segurança"), porque nomes longos quebram a coluna do PDF.
+
+Renderize:
 ```bash
 python -X utf8 <dir-da-skill>/scripts/render.py outputs/<p>/<slug>
 ```
