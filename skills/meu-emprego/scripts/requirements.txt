@@ -1,1 +1,2 @@
 reportlab
+PyMuPDF  # opcional: checagem visual do PDF

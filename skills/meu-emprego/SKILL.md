@@ -58,7 +58,7 @@ Cada papel roda como um **subagente separado** (Agent tool, `subagent_type: "gen
 | 5 | Coach de Entrevista | vaga + JSON final | `interview_prep.md` |
 
 ### 1. Estrategista
-Prompt: reposicionar o currículo para a vaga sem inventar. `summary` de 3–4 frases falando com as prioridades da vaga; `label` alinhado ao cargo sem prometer o que não tem; todas as posições mantidas, mais relevante primeiro dentro de cada uma; bullets com verbo de ação/STAR e terminologia da vaga só onde houver evidência; `skills` reordenadas sem adicionar o que a vaga cita e as fontes não mostram. Schema igual a `data/<p>/resume.json`. Voz pt-BR: primeira pessoa no passado ("Desenvolvi", "Liderei"), nunca terceira pessoa, nada em inglês além de nomes de tecnologia (en: "Developed", "Led").
+Prompt: reposicionar o currículo para a vaga sem inventar. `summary` de 3–4 frases falando com as prioridades da vaga; `label` alinhado ao cargo sem prometer o que não tem; todas as posições mantidas, mais relevante primeiro dentro de cada uma; bullets com verbo de ação/STAR e terminologia da vaga só onde houver evidência; `skills` reordenadas sem adicionar o que a vaga cita e as fontes não mostram. Densidade de palavras-chave (ATS): extraia da vaga a lista de termos técnicos e de responsabilidade (ex.: "integração entre sistemas", "decisões técnicas", "referência técnica", "segurança de aplicações") e use cada um que for verdadeiro no `summary`, em pelo menos um bullet e em `skills` (pode nomear a skill com o termo da vaga quando for o mesmo conceito, ex.: "Integração entre Sistemas" para REST + filas). Termo sem evidência não entra em lugar nenhum. `projects` não repete bullets da experiência palavra por palavra: descreva o problema, a solução técnica e as tecnologias. Schema igual a `data/<p>/resume.json`. Voz pt-BR: primeira pessoa no passado ("Desenvolvi", "Liderei"), nunca terceira pessoa, nada em inglês além de nomes de tecnologia (en: "Developed", "Led").
 
 ### 2 ⇄ 3. Gerente e Editor (loop, até 3 revisões)
 - **Gerente** (sempre um subagente novo, que não escreveu o currículo): avaliar como gerente de contratação crítico. Nota 1–10, 3–5 forças, 3–5 lacunas com como tratar de forma verdadeira, palavras-chave ausentes, 2–3 sugestões de apresentação. Só vale evidência escrita no currículo e sustentada pelas fontes; requisito sem evidência fica lacuna e não sobe nota. Última linha exatamente `FINAL_RATING: X.X`.
@@ -72,7 +72,13 @@ Renderize:
 ```bash
 python -X utf8 <dir-da-skill>/scripts/render.py outputs/<p>/<slug>
 ```
-Gera `latex/<nome>_curriculo.tex` e `pdf/<nome>_curriculo.pdf` (LaTeX se houver `pdflatex`, senão reportlab). Leia o PDF para conferir.
+Gera `latex/<nome>_curriculo.tex` e `pdf/<nome>_curriculo.pdf` (LaTeX se houver `pdflatex`, senão reportlab, com layout próprio: bullets com recuo, competências em tabela, links clicáveis, metadados e rodapé com página).
+
+Controle de qualidade visual (obrigatório): converta cada página em imagem e olhe:
+```bash
+python -X utf8 -c "import fitz,sys;d=fitz.open(sys.argv[1]);[p.get_pixmap(dpi=80).save(f'{sys.argv[2]}/page_{i}.png') for i,p in enumerate(d)]" <pdf> <pasta-temporária>
+```
+(`fitz` = `pip install PyMuPDF`; se não houver, extraia o texto com `pdftotext` ou leia o PDF direto.) Corrija no JSON e renderize de novo se houver: título de seção sozinho no fim da página, página quase vazia por poucos itens (condense certificados/dados sem perder fatos), texto em inglês ou terceira pessoa, URL quebrada.
 
 ### 4. Candidato
 Passe o histórico de notas que você mediu (rodada → nota, motivo da parada). Prompt: relatório curto com nota final e se bateu 8.5 exatamente como no histórico, principais melhorias, lacunas abertas e o que conferir antes de enviar. Nunca citar nota fora do histórico; ficar abaixo de 8.5 é resultado válido.

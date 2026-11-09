@@ -1,245 +1,247 @@
+"""Clean, ATS-friendly resume PDF with reportlab (used when pdflatex is not installed)."""
 import json
 import os
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import cm
-from reportlab.lib import colors
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, HRFlowable, Table, TableStyle
-)
-from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT, TA_JUSTIFY
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
+from xml.sax.saxutils import escape
 
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_JUSTIFY, TA_RIGHT
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.units import cm
+from reportlab.platypus import (
+    HRFlowable, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
+)
 
 ACCENT = colors.HexColor("#1a5276")
-DARK   = colors.HexColor("#1c1c1c")
-GRAY   = colors.HexColor("#555555")
-LIGHT  = colors.HexColor("#888888")
+DARK = colors.HexColor("#1c1c1c")
+GRAY = colors.HexColor("#555555")
+LIGHT = colors.HexColor("#808080")
 
 PAGE_W, PAGE_H = A4
-MARGIN_H = 1.5 * cm
-MARGIN_V = 1.2 * cm
+MARGIN_H = 1.6 * cm
+MARGIN_V = 1.3 * cm
+USABLE_W = PAGE_W - 2 * MARGIN_H
+
+FONT, BOLD, ITALIC = "Helvetica", "Helvetica-Bold", "Helvetica-Oblique"
+BODY = 9.2
+LEAD = 12.4
+
+LABELS = {
+    "pt": dict(summary="RESUMO PROFISSIONAL", skills="COMPETÊNCIAS", work="EXPERIÊNCIA PROFISSIONAL",
+               edu="FORMAÇÃO ACADÊMICA", proj="PROJETOS", cert="CURSOS E CERTIFICAÇÕES",
+               lang="IDIOMAS", present="Presente", page="Página", of="de", stack="Tecnologias"),
+    "en": dict(summary="PROFESSIONAL SUMMARY", skills="SKILLS", work="PROFESSIONAL EXPERIENCE",
+               edu="EDUCATION", proj="PROJECTS", cert="COURSES AND CERTIFICATIONS",
+               lang="LANGUAGES", present="Present", page="Page", of="of", stack="Stack"),
+}
+MONTHS = {
+    "pt": "Jan Fev Mar Abr Mai Jun Jul Ago Set Out Nov Dez".split(),
+    "en": "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(),
+}
+
+
+def _t(s) -> str:
+    """Escape user text for reportlab's mini-markup."""
+    return escape(str(s or "")).strip()
 
 
 def _styles():
-    base = {"fontName": "Helvetica", "leading": 11, "textColor": DARK}
+    def st(name, **kw):
+        base = dict(fontName=FONT, fontSize=BODY, leading=LEAD, textColor=DARK)
+        base.update(kw)
+        return ParagraphStyle(name, **base)
+
     return {
-        "name":    ParagraphStyle("name",    fontSize=18, fontName="Helvetica-Bold",
-                                  textColor=ACCENT, leading=22, spaceAfter=1),
-        "label":   ParagraphStyle("label",   fontSize=9,  fontName="Helvetica",
-                                  textColor=GRAY,  leading=12, spaceAfter=2),
-        "contact": ParagraphStyle("contact", fontSize=9,  fontName="Helvetica",
-                                  textColor=GRAY,  leading=12, spaceAfter=0, alignment=TA_CENTER),
-        "section": ParagraphStyle("section", fontSize=9,  fontName="Helvetica-Bold",
-                                  textColor=ACCENT, leading=11, spaceBefore=5, spaceAfter=2),
-        "summary": ParagraphStyle("summary", fontSize=8,  fontName="Helvetica",
-                                  textColor=DARK,  leading=11, spaceAfter=3, alignment=TA_JUSTIFY),
-        "job_co":  ParagraphStyle("job_co",  fontSize=8.5,fontName="Helvetica-Bold",
-                                  textColor=DARK,  leading=10),
-        "job_pos": ParagraphStyle("job_pos", fontSize=8,  fontName="Helvetica-Oblique",
-                                  textColor=GRAY,  leading=10),
-        "bullet":  ParagraphStyle("bullet",  fontSize=9,fontName="Helvetica",
-                                  textColor=DARK,  leading=10, leftIndent=8, spaceAfter=0),
-        "edu":     ParagraphStyle("edu",     fontSize=8,  fontName="Helvetica",
-                                  textColor=DARK,  leading=10),
-        "skill_k": ParagraphStyle("skill_k", fontSize=7.5,fontName="Helvetica-Bold",
-                                  textColor=DARK,  leading=10),
-        "skill_v": ParagraphStyle("skill_v", fontSize=7.5,fontName="Helvetica",
-                                  textColor=DARK,  leading=10),
-        "cert":    ParagraphStyle("cert",    fontSize=7.5,fontName="Helvetica",
-                                  textColor=DARK,  leading=10),
-        "proj":    ParagraphStyle("proj",    fontSize=7.5,fontName="Helvetica",
-                                  textColor=DARK,  leading=10),
+        "name": st("name", fontName=BOLD, fontSize=20, leading=24, textColor=ACCENT),
+        "label": st("label", fontSize=10.5, leading=14, textColor=GRAY),
+        "contact": st("contact", fontSize=8.6, leading=12, textColor=GRAY),
+        "section": st("section", fontName=BOLD, fontSize=10, leading=12, textColor=ACCENT,
+                      spaceBefore=8, spaceAfter=1),
+        "summary": st("summary", alignment=TA_JUSTIFY),
+        "co": st("co", fontName=BOLD, fontSize=9.8, leading=12),
+        "date": st("date", fontSize=8.6, leading=12, textColor=LIGHT, alignment=TA_RIGHT),
+        "pos": st("pos", fontName=ITALIC, textColor=GRAY, spaceAfter=1),
+        "bullet": st("bullet", leftIndent=11, bulletIndent=2, spaceAfter=1.2),
+        "skill_k": st("skill_k", fontName=BOLD),
+        "plain": st("plain"),
+        "small": st("small", fontSize=8.4, leading=11, textColor=GRAY),
     }
 
 
 def _hr():
-    return HRFlowable(width="100%", thickness=0.5, color=ACCENT, spaceAfter=3)
+    hr = HRFlowable(width="100%", thickness=0.6, color=ACCENT, spaceBefore=1, spaceAfter=4)
+    return hr
 
 
-def _fmt_date(d: str, language: str = "pt-BR") -> str:
+def _section(story, S, title):
+    story.append(Paragraph(title, S["section"]))
+    story.append(_hr())
+
+
+def _glue_sections(story):
+    """Bundle each section title + rule with the first block after it."""
+    out, i = [], 0
+    while i < len(story):
+        f = story[i]
+        if isinstance(f, Paragraph) and f.style.name == "section" and i + 2 < len(story):
+            nxt = story[i + 2]
+            body = list(nxt._content) if isinstance(nxt, KeepTogether) else [nxt]
+            out.append(KeepTogether(story[i:i + 2] + body))
+            i += 3
+        else:
+            out.append(f)
+            i += 1
+    return out
+
+
+def _fmt_date(d: str, lang: str) -> str:
     if not d:
         return ""
-    if d == "Present":
-        return "Present" if language.startswith("en") else "Presente"
+    if d.lower() in ("present", "atual", "presente"):
+        return LABELS[lang]["present"]
     parts = d.split("-")
-    months = {"01":"Jan","02":"Fev","03":"Mar","04":"Abr","05":"Mai","06":"Jun",
-              "07":"Jul","08":"Ago","09":"Set","10":"Out","11":"Nov","12":"Dez"}
-    if language.startswith("en"):
-        months = dict(zip([f"{n:02}" for n in range(1, 13)],
-                          "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()))
-    if len(parts) == 2:
-        return f"{months.get(parts[1], parts[1])}/{parts[0]}"
+    if len(parts) >= 2 and parts[1].isdigit() and 1 <= int(parts[1]) <= 12:
+        return f"{MONTHS[lang][int(parts[1]) - 1]}/{parts[0]}"
     return parts[0]
+
+
+def _period(item, lang):
+    start, end = _fmt_date(item.get("startDate", ""), lang), _fmt_date(item.get("endDate", ""), lang)
+    return f"{start} – {end}" if start and end else start or end
+
+
+def _row(left, right, S, left_w=0.72, valign="BOTTOM"):
+    t = Table([[left, Paragraph(_t(right), S["date"])]],
+              colWidths=[USABLE_W * left_w, USABLE_W * (1 - left_w)])
+    t.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("VALIGN", (0, 0), (-1, -1), valign),
+    ]))
+    return t
+
+
+def _link(url: str) -> str:
+    shown = url.replace("https://", "").replace("http://", "").rstrip("/")
+    return f'<link href="{escape(url)}" color="#1a5276">{escape(shown)}</link>'
 
 
 def generate_pdf(json_path: str, pdf_path: str):
     with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
+    os.makedirs(os.path.dirname(pdf_path) or ".", exist_ok=True)
 
-    os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+    lang = "en" if os.getenv("RESUME_LANGUAGE", "pt-BR").lower().startswith("en") else "pt"
+    L, S = LABELS[lang], _styles()
+    basics = data.get("basics", {})
+    name = basics.get("name", "")
+
+    def footer(canvas, doc):
+        canvas.saveState()
+        canvas.setFont(FONT, 7.5)
+        canvas.setFillColor(LIGHT)
+        canvas.drawRightString(PAGE_W - MARGIN_H, MARGIN_V * 0.55,
+                               f"{name} · {L['page']} {doc.page}")
+        canvas.restoreState()
 
     doc = SimpleDocTemplate(
-        pdf_path,
-        pagesize=A4,
-        leftMargin=MARGIN_H,
-        rightMargin=MARGIN_H,
-        topMargin=MARGIN_V,
-        bottomMargin=MARGIN_V,
+        pdf_path, pagesize=A4, leftMargin=MARGIN_H, rightMargin=MARGIN_H,
+        topMargin=MARGIN_V, bottomMargin=MARGIN_V,
+        title=f"{name} — {basics.get('label', '')}".strip(" —"), author=name,
+        subject=basics.get("label", ""),
     )
-
-    language = os.getenv("RESUME_LANGUAGE", "pt-BR").lower()
-    english = language.startswith("en")
-    S = _styles()
-    for key in ("summary", "bullet", "edu", "skill_k", "skill_v", "cert", "proj"):
-        S[key].fontSize = 9
-        S[key].leading = 12
-    S["job_pos"].keepWithNext = True
-    S["section"].keepWithNext = True
     story = []
-    basics = data.get("basics", {})
-    usable_w = PAGE_W - 2 * MARGIN_H
 
-    # ── Header ──────────────────────────────────────────────────────────
-    story.append(Paragraph(basics.get("name", ""), S["name"]))
-    story.append(Paragraph(basics.get("label", ""), S["label"]))
+    # Header
+    story.append(Paragraph(_t(name), S["name"]))
+    if basics.get("label"):
+        story.append(Paragraph(_t(basics["label"]), S["label"]))
+    loc = basics.get("location", {}) or {}
+    location = ", ".join(x for x in (loc.get("city"), loc.get("region")) if x)
+    contact = [_t(basics.get("email")), _t(basics.get("phone")), _t(location)]
+    urls = [p.get("url") for p in basics.get("profiles", []) if p.get("url") and " " not in p["url"]]
+    if basics.get("url"):
+        urls.append(basics["url"])
+    contact += [_link(u) for u in urls]
+    story.append(Paragraph("  ·  ".join(c for c in contact if c), S["contact"]))
+    story.append(Spacer(1, 2))
 
-    loc = basics.get("location", {})
-    city = loc.get("city", "")
-    region = loc.get("region", "")
-    location_str = f"{city}, {region}" if city and region else city or region
+    # Summary
+    if basics.get("summary"):
+        _section(story, S, L["summary"])
+        story.append(Paragraph(_t(basics["summary"]), S["summary"]))
 
-    profiles = basics.get("profiles", [])
-    linkedin = next((p["url"] for p in profiles if p.get("network","").lower() == "linkedin"), "")
-    contact_parts = [
-        basics.get("email", ""),
-        basics.get("phone", ""),
-        location_str,
-        linkedin,
-    ]
-    story.append(Paragraph("  |  ".join(p for p in contact_parts if p), S["contact"]))
-    story.append(Spacer(1, 4))
-
-    # ── Summary ─────────────────────────────────────────────────────────
-    summary = basics.get("summary", "")
-    if summary:
-        story.append(Paragraph("PROFESSIONAL SUMMARY" if english else "RESUMO PROFISSIONAL", S["section"]))
-        story.append(_hr())
-        story.append(Paragraph(summary, S["summary"]))
-
-    # ── Skills ──────────────────────────────────────────────────────────
-    skills = data.get("skills", [])
+    # Skills: one row per category, fixed label column (no awkward wrapping)
+    skills = [s for s in data.get("skills", []) if s.get("keywords")]
     if skills:
-        story.append(Paragraph("SKILLS" if english else "COMPETÊNCIAS", S["section"]))
-        story.append(_hr())
-        col_w = usable_w / 2
-        pairs = []
-        for skill in skills:
-            name = skill.get("name", "")
-            kws  = ", ".join(skill.get("keywords", []))
-            pairs.append([
-                Paragraph(f"<b>{name}:</b>", S["skill_k"]),
-                Paragraph(kws, S["skill_v"]),
-            ])
-        # split into 2-column layout
-        rows = []
-        for i in range(0, len(pairs), 2):
-            left  = pairs[i]
-            right = pairs[i+1] if i+1 < len(pairs) else [Paragraph("", S["skill_v"]), Paragraph("", S["skill_v"])]
-            rows.append([left[0], left[1], right[0], right[1]])
-
-        t = Table(rows, colWidths=[col_w*0.25, col_w*0.75, col_w*0.25, col_w*0.75])
+        _section(story, S, L["skills"])
+        rows = [[Paragraph(_t(s.get("name")), S["skill_k"]),
+                 Paragraph(_t(", ".join(s["keywords"])), S["plain"])] for s in skills]
+        t = Table(rows, colWidths=[3.6 * cm, USABLE_W - 3.6 * cm])
         t.setStyle(TableStyle([
-            ("VALIGN", (0,0), (-1,-1), "TOP"),
-            ("LEFTPADDING",  (0,0), (-1,-1), 0),
-            ("RIGHTPADDING", (0,0), (-1,-1), 4),
-            ("TOPPADDING",   (0,0), (-1,-1), 1),
-            ("BOTTOMPADDING",(0,0), (-1,-1), 1),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 0.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 0.5),
         ]))
         story.append(t)
-        story.append(Spacer(1, 2))
 
-    # ── Work Experience ──────────────────────────────────────────────────
-    work = data.get("work", [])
-    if work:
-        story.append(Paragraph("PROFESSIONAL EXPERIENCE" if english else "EXPERIÊNCIA PROFISSIONAL", S["section"]))
-        story.append(_hr())
-        for job in work:
-            start = _fmt_date(job.get("startDate", ""), language)
-            end   = _fmt_date(job.get("endDate",   ""), language)
-            period = f"{start} – {end}" if start else end
+    # Experience
+    if data.get("work"):
+        _section(story, S, L["work"])
+        for job in data["work"]:
+            co = _t(job.get("name"))
+            if job.get("location"):
+                co += f'  <font name="{FONT}" size="8.4" color="#808080">{_t(job["location"])}</font>'
+            head = [_row(Paragraph(co, S["co"]), _period(job, lang), S)]
+            if job.get("position"):
+                head.append(Paragraph(_t(job["position"]), S["pos"]))
+            bullets = [Paragraph(_t(h), S["bullet"], bulletText="•") for h in job.get("highlights", [])]
+            # keep the header with its first two bullets
+            story.append(KeepTogether(head + bullets[:2]))
+            story.extend(bullets[2:])
+            story.append(Spacer(1, 4))
 
-            header = Table(
-                [[Paragraph(job.get("name",""), S["job_co"]),
-                  Paragraph(period, ParagraphStyle("per", fontSize=8,
-                      fontName="Helvetica", textColor=LIGHT, leading=10, alignment=TA_RIGHT))]],
-                colWidths=[usable_w * 0.65, usable_w * 0.35],
-            )
-            header.setStyle(TableStyle([
-                ("LEFTPADDING",  (0,0),(-1,-1),0),
-                ("RIGHTPADDING", (0,0),(-1,-1),0),
-                ("TOPPADDING",   (0,0),(-1,-1),0),
-                ("BOTTOMPADDING",(0,0),(-1,-1),0),
-                ("VALIGN",       (0,0),(-1,-1),"BOTTOM"),
-            ]))
-            header.keepWithNext = True
-            story.append(header)
-            story.append(Paragraph(job.get("position",""), S["job_pos"]))
-            for h in job.get("highlights", []):
-                story.append(Paragraph(f"• {h}", S["bullet"]))
-            story.append(Spacer(1, 3))
+    # Projects
+    if data.get("projects"):
+        _section(story, S, L["proj"])
+        for p in data["projects"]:
+            block = [Paragraph(f"<b>{_t(p.get('name'))}</b>"
+                               + (f" — {_t(p['description'])}" if p.get("description") else ""), S["plain"])]
+            block += [Paragraph(_t(h), S["bullet"], bulletText="•") for h in p.get("highlights", [])]
+            if p.get("keywords"):
+                block.append(Paragraph(f"<i>{L['stack']}:</i> {_t(', '.join(p['keywords']))}", S["small"]))
+            story.append(KeepTogether(block + [Spacer(1, 3)]))
 
-    # ── Education ────────────────────────────────────────────────────────
-    education = data.get("education", [])
-    if education:
-        story.append(Paragraph("EDUCATION" if english else "FORMAÇÃO ACADÊMICA", S["section"]))
-        story.append(_hr())
-        for edu in education:
-            end = _fmt_date(edu.get("endDate", ""), language)
-            label = f"{edu.get('studyType','')} {'in' if english else 'em'} {edu.get('area','')}"
-            row_text = f"<b>{edu.get('institution','')}</b> — {label}"
-            if end:
-                row_text += f"  <font color='#888888'>{end}</font>"
-            story.append(Paragraph(row_text, S["edu"]))
-        story.append(Spacer(1, 2))
+    # Education
+    if data.get("education"):
+        _section(story, S, L["edu"])
+        for e in data["education"]:
+            degree = " ".join(x for x in (e.get("studyType"), ("em" if lang == "pt" else "in") if e.get("area") else "", e.get("area")) if x)
+            left = Paragraph(f"<b>{_t(degree)}</b> — {_t(e.get('institution'))}", S["plain"])
+            story.append(_row(left, _period(e, lang) if e.get("startDate") else _fmt_date(e.get("endDate", ""), lang), S, 0.82, "TOP"))
+            story.append(Spacer(1, 1.5))
 
-    # ── Projects ─────────────────────────────────────────────────────────
-    projects = data.get("projects", [])
-    if projects:
-        story.append(Paragraph("PROJECTS" if english else "PROJETOS", S["section"]))
-        story.append(_hr())
-        for proj in projects:
-            story.append(Paragraph(
-                f"<b>{proj.get('name','')}</b> — {proj.get('description','')}",
-                S["proj"]
-            ))
-        story.append(Spacer(1, 2))
-
-    # ── Certifications ───────────────────────────────────────────────────
+    # Certificates (compact)
     certs = data.get("certificates", [])
     if certs:
-        story.append(Paragraph("CERTIFICATIONS" if english else "CERTIFICAÇÕES", S["section"]))
-        story.append(_hr())
-        for cert in certs:
-            date_str = cert.get("date", "")
-            story.append(Paragraph(
-                f"• <b>{cert.get('name','')}</b>"
-                + (f"  <font color='#888888'>({date_str})</font>" if date_str else ""),
-                S["cert"]
-            ))
+        _section(story, S, L["cert"])
+        for c in certs:
+            extra = " · ".join(x for x in (_t(c.get("issuer")), _t(c.get("date"))) if x)
+            story.append(Paragraph(_t(c.get("name")) + (f' <font color="#808080">({extra})</font>' if extra else ""),
+                                   S["bullet"], bulletText="•"))
 
+    # Languages
     if data.get("languages"):
-        story.append(Paragraph("LANGUAGES" if english else "IDIOMAS", S["section"]))
-        story.append(_hr())
-        story.append(Paragraph(" | ".join(f"{x['language']}: {x['fluency']}" for x in data["languages"]), S["edu"]))
-    doc.build(story)
+        _section(story, S, L["lang"])
+        story.append(Paragraph("  ·  ".join(
+            f"<b>{_t(x.get('language'))}</b>: {_t(x.get('fluency'))}" for x in data["languages"]), S["plain"]))
+
+    story = _glue_sections(story)
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
     print(f"PDF gerado: {pdf_path}")
     return pdf_path
 
 
 if __name__ == "__main__":
     import sys
-    json_p = sys.argv[1] if len(sys.argv) > 1 else "outputs/job_desc/json/resume.json"
-    pdf_p  = sys.argv[2] if len(sys.argv) > 2 else "outputs/job_desc/pdf/output_resume.pdf"
-    generate_pdf(json_p, pdf_p)
+    generate_pdf(sys.argv[1], sys.argv[2])
