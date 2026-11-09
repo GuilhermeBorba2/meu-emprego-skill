@@ -43,8 +43,8 @@ O Claude pede só o que faltar. O resultado sai em `outputs/<voce>/<cargo>_<empr
 
 ```
 json/resume.json          conteúdo do currículo
-latex/output_resume.tex   versão editável
-pdf/output_resume.pdf     o currículo final
+latex/<nome>_curriculo.tex   versão editável
+pdf/<nome>_curriculo.pdf     o currículo final
 evaluations/round_N.md    avaliação de cada rodada
 coverage_review.md        auditoria de cobertura por posição
 rating_report.md          notas, motivo da parada e lacunas abertas

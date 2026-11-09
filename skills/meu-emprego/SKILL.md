@@ -72,7 +72,7 @@ Renderize:
 ```bash
 python -X utf8 <dir-da-skill>/scripts/render.py outputs/<p>/<slug>
 ```
-Gera `latex/output_resume.tex` e `pdf/output_resume.pdf` (LaTeX se houver `pdflatex`, senão reportlab). Leia o PDF para conferir.
+Gera `latex/<nome>_curriculo.tex` e `pdf/<nome>_curriculo.pdf` (LaTeX se houver `pdflatex`, senão reportlab). Leia o PDF para conferir.
 
 ### 4. Candidato
 Passe o histórico de notas que você mediu (rodada → nota, motivo da parada). Prompt: relatório curto com nota final e se bateu 8.5 exatamente como no histórico, principais melhorias, lacunas abertas e o que conferir antes de enviar. Nunca citar nota fora do histórico; ficar abaixo de 8.5 é resultado válido.
