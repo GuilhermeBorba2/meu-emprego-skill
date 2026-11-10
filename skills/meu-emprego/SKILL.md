@@ -5,7 +5,7 @@ description: Gera currículo sob medida para uma vaga (JSON → LaTeX → PDF), 
 
 # meu-emprego: currículo sob medida com 5 agentes de IA
 
-Você orquestra 5 agentes que fazem todo o trabalho de texto. Funciona com qualquer modelo (Claude, GPT, Gemini, Grok...). O único código executado é o renderizador de PDF em `scripts/render.py` desta skill (Python + `reportlab`; usa `pdflatex` se estiver instalado).
+Você orquestra 5 agentes que fazem todo o trabalho de texto. Funciona com qualquer modelo (Claude, GPT, Gemini, Grok...). O único código executado é o renderizador de PDF em `scripts/render.py` desta skill (Python + `reportlab`).
 
 Área de trabalho = diretório atual da sessão. Use as pastas `input/<p>/` (arquivos do usuário), `data/<p>/` (base) e `outputs/<p>/` (resultados); crie se não existirem. Esses dados são pessoais: se o diretório for um repositório git, garanta que `input/`, `data/` e `outputs/` estejam no `.gitignore`.
 
@@ -42,7 +42,7 @@ Com PDF e vaga em mãos, siga todas as etapas abaixo sem parar para perguntar.
 ## Etapa 1: preparar
 
 1. Vaga: texto colado pelo usuário ou `input/<p>/job_desc.md`. Salve o texto colado em `input/<p>/job_desc.md`.
-2. Slug da pasta: `<cargo>_<empresa>` em snake_case ASCII (ex.: `backend_java_foursys`). Saída em `outputs/<p>/<slug>/` com `json/`, `latex/`, `pdf/`.
+2. Slug da pasta: `<cargo>_<empresa>` em snake_case ASCII (ex.: `backend_java_acme`). Saída em `outputs/<p>/<slug>/` com `json/`, `latex/`, `pdf/`.
 3. Idioma: `pt-BR` por padrão; inglês se o usuário pedir ou a vaga for em inglês e ele confirmar.
 
 ## Os 5 agentes
@@ -75,9 +75,10 @@ Depois do loop, antes de renderizar, confira você mesmo o JSON: nenhum verbo em
 
 Renderize:
 ```bash
-python -X utf8 <dir-da-skill>/scripts/render.py outputs/<p>/<slug>
+python -X utf8 <dir-da-skill>/scripts/render.py outputs/<p>/<slug>            # currículo em português
+python -X utf8 <dir-da-skill>/scripts/render.py outputs/<p>/<slug> --lang en  # currículo em inglês
 ```
-Gera `latex/<nome>_curriculo.tex` e `pdf/<nome>_curriculo.pdf` (LaTeX se houver `pdflatex`, senão reportlab, com layout próprio: bullets com recuo, competências em tabela, links clicáveis, metadados e rodapé com página).
+Gera `pdf/<nome>_curriculo.pdf` (layout próprio: bullets com recuo, competências em tabela, links clicáveis, metadados e rodapé com página) e `latex/<nome>_curriculo.tex` (versão editável, abre no Overleaf). `--latex` compila o PDF com `pdflatex` se a pessoa preferir esse visual. O script termina com erro se o PDF não for criado: nesse caso, leia a mensagem e corrija antes de seguir.
 
 Controle de qualidade visual (obrigatório): converta cada página em imagem e olhe:
 ```bash

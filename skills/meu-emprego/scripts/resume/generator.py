@@ -1,66 +1,44 @@
+"""Build an editable LaTeX resume from the JSON (compile with pdflatex, or open in Overleaf)."""
 import json
-import subprocess
-import os
-import sys
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from resume.latex_utils import escape_latex as esc
 
-from resume.latex_utils import render_latex_to_pdf, escape_latex
+TITLES = {
+    "pt": dict(summary="Resumo Profissional", skills="Competências", work="Experiência Profissional",
+               edu="Formação Acadêmica", proj="Projetos", cert="Cursos e Certificações",
+               lang="Idiomas", in_="em", present="Presente"),
+    "en": dict(summary="Professional Summary", skills="Skills", work="Work Experience",
+               edu="Education", proj="Projects", cert="Courses and Certifications",
+               lang="Languages", in_="in", present="Present"),
+}
 
-def generate_latex_resume(json_data):
-    """
-    Generates LaTeX content for a resume based on provided JSON data.
-
-    Args:
-    json_data (dict): A dictionary containing resume information.
-
-    Returns:
-    str: The LaTeX content for the resume.
-    """
-    latex_content = r"""
-\documentclass[a4paper,11pt]{article}
-
-\usepackage{latexsym}
+PREAMBLE = r"""\documentclass[a4paper,11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
 \usepackage[empty]{fullpage}
 \usepackage{titlesec}
-\usepackage{marvosym}
 \usepackage[usenames,dvipsnames]{color}
-\usepackage{verbatim}
 \usepackage{enumitem}
 \usepackage[pdftex]{hyperref}
 \usepackage{fancyhdr}
-\usepackage{fontawesome}
-\usepackage{xcolor}
-\usepackage{amsmath}
 
 \pagestyle{fancy}
 \fancyhf{}
-\fancyfoot{}
 \renewcommand{\headrulewidth}{0pt}
 \renewcommand{\footrulewidth}{0pt}
-
 \addtolength{\oddsidemargin}{-0.5in}
 \addtolength{\evensidemargin}{-0.5in}
 \addtolength{\textwidth}{1in}
 \addtolength{\topmargin}{-.5in}
 \addtolength{\textheight}{1.0in}
-
 \urlstyle{same}
-
 \raggedbottom
 \raggedright
 \setlength{\tabcolsep}{0in}
 
-\titleformat{\section}{
-    \vspace{-4pt}\scshape\raggedright\large
-}{}{0em}{}[\color{black}\titlerule \vspace{-5pt}]
+\titleformat{\section}{\vspace{-4pt}\scshape\raggedright\large}{}{0em}{}[\color{black}\titlerule \vspace{-5pt}]
 
-\newcommand{\resumeItem}[1]{
-  \item\small{
-    {#1 \vspace{-2pt}}
-  }
-}
-
+\newcommand{\resumeItem}[1]{\item\small{#1 \vspace{-2pt}}}
 \newcommand{\resumeSubheading}[4]{
   \vspace{-1pt}\item
   \begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
@@ -68,143 +46,92 @@ def generate_latex_resume(json_data):
     \textit{\small#3} & \textit{\small #4} \\
   \end{tabular*}\vspace{-5pt}
 }
-
-\newcommand{\resumeCertification}[2]{%
-  \item
-  \begin{tabular*}{0.97\textwidth}{@{}l@{\extracolsep{\fill}}r@{}}
-    #1 & \text{#2} \\
-  \end{tabular*}\vspace{-4pt}
-}
-
-\newcommand{\resumeSubItem}[2]{\resumeItem{#1: #2}\vspace{-4pt}}
-
-\renewcommand{\labelitemii}{$\circ$}
-
-\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0em, itemindent=0em, label={}, itemsep=0ex]}
-\newcommand{\resumeSubHeadingListEnd}{\end{itemize}}
-\newcommand{\resumeItemListStart}{\begin{itemize}}
-\newcommand{\resumeItemListEnd}{\end{itemize}\vspace{-5pt}}
-
-\begin{document}
-
-%----------HEADING-----------------
-\begin{tabular*}{\textwidth}{l@{\extracolsep{\fill}}r}
-\textbf{\href{}{\Large """ + escape_latex(json_data['basics']['name']) + r"""}} & Email: \href{mailto:""" + escape_latex(json_data['basics']['email']) + r"""}{\faEnvelope} """ + escape_latex(json_data['basics']['email']) + r""" \\
+\newcommand{\resumeSubItem}[2]{\item\small{\textbf{#1}: #2}\vspace{-4pt}}
+\newcommand{\listStart}{\begin{itemize}[leftmargin=0em, itemindent=0em, label={}, itemsep=0ex]}
+\newcommand{\listEnd}{\end{itemize}}
+\newcommand{\itemsStart}{\begin{itemize}}
+\newcommand{\itemsEnd}{\end{itemize}\vspace{-5pt}}
 """
 
-    for profile in json_data['basics'].get('profiles', []):
-        if profile['network'].lower() == 'linkedin':
-            latex_content += r"\href{" + profile['url'] + r"}{LinkedIn: " + escape_latex(profile['username']) + r"} \\"
-        elif profile['network'].lower() == 'github':
-            latex_content += r"\href{" + profile['url'] + r"}{GitHub: " + escape_latex(profile['username']) + r"} \\"
-        elif profile['network'].lower() == 'blog':
-            latex_content += r"\href{" + profile['url'] + r"}{Blog: " + escape_latex(profile['url'].split('//')[1]) + r"} \\"
 
-    latex_content += r"\hspace{10pt} & Phone: " + escape_latex(json_data['basics']['phone']) + r"\\"
+def generate_latex_resume(data: dict, language: str = "pt-BR") -> str:
+    T = TITLES["en" if str(language).lower().startswith("en") else "pt"]
+    b = data.get("basics", {})
 
-    latex_content += r"""\end{tabular*}
+    def date(d):
+        d = str(d or "")
+        return T["present"] if d.lower() in ("present", "atual", "presente") else esc(d)
 
-%-----------SKILLS-----------------
-\section{Skills}
-\resumeSubHeadingListStart
-"""
+    def period(item):
+        s, e = date(item.get("startDate")), date(item.get("endDate"))
+        return f"{s} -- {e}" if s and e else s or e
 
-    for skill in json_data['skills']:
-        latex_content += r"\resumeSubItem{\textbf{" + escape_latex(skill['name']) + r"}}{" + escape_latex(', '.join(skill['keywords'])) + r"}" + "\n"
+    out = [PREAMBLE, r"\begin{document}", ""]
 
-    latex_content += r"""\resumeSubHeadingListEnd
+    # Header
+    loc = b.get("location", {}) or {}
+    contact = [esc(b.get("email", "")), esc(b.get("phone", "")),
+               esc(", ".join(x for x in (loc.get("city"), loc.get("region")) if x))]
+    for p in b.get("profiles", []):
+        url = p.get("url", "")
+        if url and " " not in url:
+            contact.append(r"\href{" + url + "}{" + esc(url.split("//")[-1]) + "}")
+    if b.get("url"):
+        contact.append(r"\href{" + b["url"] + "}{" + esc(b["url"].split("//")[-1]) + "}")
+    out += [r"{\Large\textbf{" + esc(b.get("name", "")) + r"}}\\",
+            r"{\small " + esc(b.get("label", "")) + r"}\\",
+            r"{\small " + r" $\cdot$ ".join(c for c in contact if c) + "}", ""]
 
-%-----------EXPERIENCE-----------------
-\section{Work Experience}
-\resumeSubHeadingListStart
-"""
+    if b.get("summary"):
+        out += [r"\section{" + T["summary"] + "}", r"\small{" + esc(b["summary"]) + "}", ""]
 
-    for job in json_data['work']:
-        latex_content += r"""
-\resumeSubheading
-{""" + escape_latex(job['name']) + r"""}{""" + job['startDate'] + r" – " + job['endDate'] + r"""}
-{""" + escape_latex(job['position']) + r"""}{""" + escape_latex(job.get('location', '')) + r"""}
-\resumeItemListStart
-"""
-        for highlight in job['highlights']:
-            latex_content += r"\resumeItem{" + escape_latex(highlight) + r"}" + "\n"
-        latex_content += r"\resumeItemListEnd" + "\n"
+    if data.get("skills"):
+        out += [r"\section{" + T["skills"] + "}", r"\listStart"]
+        out += [r"\resumeSubItem{" + esc(s.get("name", "")) + "}{" + esc(", ".join(s.get("keywords", []))) + "}"
+                for s in data["skills"]]
+        out += [r"\listEnd", ""]
 
-    latex_content += r"""\resumeSubHeadingListEnd
+    if data.get("work"):
+        out += [r"\section{" + T["work"] + "}", r"\listStart"]
+        for j in data["work"]:
+            out.append(r"\resumeSubheading{" + esc(j.get("name", "")) + "}{" + period(j) + "}{"
+                       + esc(j.get("position", "")) + "}{" + esc(j.get("location", "")) + "}")
+            if j.get("highlights"):
+                out += [r"\itemsStart"] + [r"\resumeItem{" + esc(h) + "}" for h in j["highlights"]] + [r"\itemsEnd"]
+        out += [r"\listEnd", ""]
 
-%-----------EDUCATION-----------------
-\section{Education}
-\resumeSubHeadingListStart
-"""
+    if data.get("projects"):
+        out += [r"\section{" + T["proj"] + "}", r"\listStart"]
+        out += [r"\resumeSubItem{" + esc(p.get("name", "")) + "}{" + esc(p.get("description", "")) + "}"
+                for p in data["projects"]]
+        out += [r"\listEnd", ""]
 
-    for edu in json_data['education']:
-        start = edu.get('startDate') or ''
-        end = edu.get('endDate') or ''
-        date_range = f"{start} - {end}" if start else end
-        latex_content += r"""
-\resumeSubheading
-{""" + escape_latex(edu['institution']) + r"""}{""" + date_range + r"""}
-{""" + escape_latex(edu['studyType']) + r" in " + escape_latex(edu['area']) + r"""}{""" + escape_latex(edu.get('location', '')) + r"""}
-"""
+    if data.get("education"):
+        out += [r"\section{" + T["edu"] + "}", r"\listStart"]
+        for e in data["education"]:
+            degree = " ".join(x for x in (esc(e.get("studyType", "")), T["in_"] if e.get("area") else "",
+                                          esc(e.get("area", ""))) if x)
+            out.append(r"\resumeSubheading{" + esc(e.get("institution", "")) + "}{" + period(e) + "}{"
+                       + degree + "}{" + esc(e.get("location", "")) + "}")
+        out += [r"\listEnd", ""]
 
-    latex_content += r"""\resumeSubHeadingListEnd
+    if data.get("certificates"):
+        out += [r"\section{" + T["cert"] + "}", r"\listStart"]
+        for c in data["certificates"]:
+            extra = ", ".join(esc(x) for x in (c.get("issuer"), c.get("date")) if x)
+            out.append(r"\item\small{" + esc(c.get("name", "")) + (f" ({extra})" if extra else "") + "}")
+        out += [r"\listEnd", ""]
 
-\section{Projects}
-\resumeSubHeadingListStart
-"""
+    if data.get("languages"):
+        out += [r"\section{" + T["lang"] + "}", r"\small{" + r" $\cdot$ ".join(
+            esc(f"{l.get('language', '')}: {l.get('fluency', '')}") for l in data["languages"]) + "}", ""]
 
-    for project in json_data.get('projects', []):
-        latex_content += r"\resumeSubItem{\textbf{" + escape_latex(project['name']) + r"}}{" + escape_latex(project['description']) + r"}" + "\n"
-
-    latex_content += r"""\resumeSubHeadingListEnd
-
-%-----------CERTIFICATIONS-----------------
-\section{Certifications}
-\resumeSubHeadingListStart
-"""
-
-    for cert in json_data['certificates']:
-        latex_content += r"\resumeCertification{" + escape_latex(cert['name']) + r"}{" + cert['date'] + r"}{}{}" + "\n"
-
-    latex_content += r"""\resumeSubHeadingListEnd
-\end{document}
-"""
-
-    return latex_content
-
-def render_resume(json_file_path, output_file_path):
-    """
-    Loads JSON data from a file, generates LaTeX content, and writes it to a file.
-
-    Args:
-    json_file_path (str): The path to the JSON file containing resume data.
-    output_file_path (str): The path where the LaTeX file will be saved.
-    """
-    # Load JSON data
-    with open(json_file_path, 'r') as json_file:
-        resume_data = json.load(json_file)
-
-    # Generate LaTeX content
-    latex_content = generate_latex_resume(resume_data)
-
-    # Write LaTeX content to file
-    with open(output_file_path, 'w') as latex_file:
-        latex_file.write(latex_content)
-
-    print(f"LaTeX resume has been generated and saved to {output_file_path}")
+    out.append(r"\end{document}")
+    return "\n".join(out) + "\n"
 
 
-def generate(
-    json_path: str = "outputs/json/resume.json",
-    latex_path: str = "outputs/latex/output_resume.tex",
-    pdf_dir: str = "outputs/pdf",
-):
-    """
-    Generates a resume from a JSON file and converts it to PDF.
-    Paths are configurable to support per-profile output directories.
-    """
-    render_resume(json_path, latex_path)
-    render_latex_to_pdf(latex_path, pdf_dir)
-
-if __name__ == "__main__":
-    generate()
+def render_resume(json_file_path, output_file_path, language="pt-BR"):
+    with open(json_file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    with open(output_file_path, "w", encoding="utf-8") as f:
+        f.write(generate_latex_resume(data, language))

@@ -82,7 +82,8 @@ Se o chat não gerou o PDF, salve o JSON como `resume.json` e rode:
 
 ```bash
 pip install reportlab
-python -X utf8 skills/meu-emprego/scripts/render.py resume.json
+python -X utf8 skills/meu-emprego/scripts/render.py resume.json            # português
+python -X utf8 skills/meu-emprego/scripts/render.py resume.json --lang en  # inglês
 ```
 
-O PDF sai em `pdf/<seu_nome>_curriculo.pdf`, na mesma pasta do JSON.
+O PDF sai em `pdf/<seu_nome>_curriculo.pdf`, na mesma pasta do JSON (rode os comandos de dentro da pasta do repositório clonado).

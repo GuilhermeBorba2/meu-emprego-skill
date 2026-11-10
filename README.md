@@ -30,8 +30,10 @@ Funciona com **Claude, ChatGPT, Gemini, Grok, Copilot, DeepSeek** e outros. Sem 
 3. Pegue o currículo pronto em texto e em JSON. Se o chat executar Python (ex.: ChatGPT), peça o PDF ali mesmo.
 4. Se não, gere o PDF no seu computador:
    ```bash
+   git clone https://github.com/GuilhermeBorba2/meu-emprego-skill.git
+   cd meu-emprego-skill
    pip install reportlab
-   python -X utf8 skills/meu-emprego/scripts/render.py caminho/resume.json
+   python -X utf8 skills/meu-emprego/scripts/render.py caminho/resume.json            # --lang en para inglês
    ```
 
 ### Opção B: Claude Code
