@@ -9,9 +9,11 @@ Você orquestra 5 agentes que fazem todo o trabalho de texto. Funciona com qualq
 
 Área de trabalho = diretório atual da sessão. Use as pastas `input/<p>/` (arquivos do usuário), `data/<p>/` (base) e `outputs/<p>/` (resultados); crie se não existirem. Esses dados são pessoais: se o diretório for um repositório git, garanta que `input/`, `data/` e `outputs/` estejam no `.gitignore`.
 
+`<dir-da-skill>` = a pasta onde está este SKILL.md (no repositório clonado: `skills/meu-emprego`).
+
 Python: use `python` (ou `py -3` no Windows). Se `import reportlab` falhar, rode `python -m pip install -r <dir-da-skill>/scripts/requirements.txt`.
 
-Pessoa padrão: a única pasta em `input/`, ou derive do nome no currículo.
+Arquivos temporários (ex.: imagens da checagem visual): use a pasta temporária da sua ferramenta ou `outputs/<p>/<slug>/_tmp/` e apague no fim. Nunca grave nada fora de `input/`, `data/` e `outputs/`.
 
 ## Regra de ouro (vale para todas as etapas)
 
@@ -29,21 +31,23 @@ O usuário só precisa fornecer duas coisas. Antes de qualquer etapa, confira o 
 1. **Currículo em PDF/DOCX** (e, se quiser, o PDF do LinkedIn: Mais ⋯ → Salvar como PDF). Pode vir como caminho ou arrastado no chat. Copie para `input/<p>/`. Se `input/<p>/` já tem PDF e `data/<p>/resume.json` existe, não peça de novo.
 2. **A vaga**: texto colado (ou link; se for link, abra e extraia o texto).
 
-Nome da pessoa (`<p>`): derive do nome no currículo em snake_case (ex.: `guilherme`) se não houver pasta em `input/`. Não peça `profile_truth.md`: se não existir, crie um rascunho a partir dos PDFs (fatos, competências, e uma seção "Lacunas" com o que a vaga pede e as fontes não mostram) e avise o usuário para revisar.
+Nome da pessoa (`<p>`): se já existe uma pasta em `input/` para ela, use essa; senão, o primeiro nome do currículo em snake_case ASCII (ex.: `guilherme`).
 
-Com PDF e vaga em mãos, siga todas as etapas abaixo sem parar para perguntar.
+`profile_truth.md` (fonte de verdade da pessoa, vale para todas as vagas): não peça. Se não existir, crie um rascunho **só com fatos dos PDFs** (contato, experiências, formação, competências, idiomas) e uma seção `## ❌ NÃO INCLUIR` vazia para a pessoa preencher. Não escreva lacunas de vaga nele: as lacunas de cada vaga vão no `rating_report.md` daquela vaga. Avise o usuário para revisar o rascunho.
+
+Com PDF e vaga em mãos, siga todas as etapas abaixo sem parar para perguntar. Dúvidas que as regras não resolvem (ex.: idioma, dado ambíguo) viram uma escolha conservadora registrada no `rating_report.md`, não uma pergunta.
 
 ## Etapa 0: base (só se `data/<p>/resume.json` não existir ou o usuário pedir para refazer)
 
 1. Leia todos os PDF/DOCX de `input/<p>/` (com a ferramenta de leitura de arquivos que você tiver; se não ler PDF, extraia o texto com `python -c "import fitz,sys;print(''.join(p.get_text() for p in fitz.open(sys.argv[1])))" arquivo.pdf`) e o `profile_truth.md`, se houver.
-2. Escreva `data/<p>/resume.json` no schema JSON Resume usado pelo projeto : `basics`, `work[{name,position,location,startDate,endDate,highlights}]`, `education`, `skills[{name,keywords}]`, `certificates`, `projects`, `languages`, `interests`. Datas `AAAA-MM`; atual = `"Present"`.
+2. Escreva `data/<p>/resume.json` no schema JSON Resume: `basics`, `work[{name,position,location,startDate,endDate,highlights}]`, `education`, `skills[{name,keywords}]`, `certificates`, `projects`, `languages`. Campos sem informação podem ficar vazios ou ausentes. Mantenha o texto no idioma original das fontes (a base é fiel; a tradução acontece na vaga). Datas `AAAA-MM`; emprego atual = `"Present"`. Data de fim ausente: use `"Present"` só se a fonte indicar que é o emprego atual (ex.: "– atual", o mais recente sem fim); senão deixe vazio e avise.
 3. Avise que rodar de novo sobrescreve correções manuais. Peça ao usuário para revisar.
 
 ## Etapa 1: preparar
 
 1. Vaga: texto colado pelo usuário ou `input/<p>/job_desc.md`. Salve o texto colado em `input/<p>/job_desc.md`.
-2. Slug da pasta: `<cargo>_<empresa>` em snake_case ASCII (ex.: `backend_java_acme`). Saída em `outputs/<p>/<slug>/` com `json/`, `latex/`, `pdf/`.
-3. Idioma: `pt-BR` por padrão; inglês se o usuário pedir ou a vaga for em inglês e ele confirmar.
+2. Slug da pasta: `<cargo>_<empresa>` em snake_case ASCII, só o cargo principal, sem nível nem parênteses, até ~40 caracteres (ex.: "Senior Full-Stack Engineer (React + Node) — Example Corp" → `full_stack_engineer_example_corp`). Saída em `outputs/<p>/<slug>/` com `json/`, `evaluations/`, `latex/`, `pdf/`.
+3. Idioma do currículo: o que o usuário pedir. Se ele não disser, use o idioma da **vaga** (vaga em inglês → currículo em inglês, `--lang en`; vaga em português → pt-BR) e registre a escolha no `rating_report.md`.
 
 ## Os 5 agentes
 
@@ -63,13 +67,13 @@ Você é o orquestrador: passa caminhos de arquivo (não o conteúdo), espera ca
 | 5 | Coach de Entrevista | vaga + JSON final | `interview_prep.md` |
 
 ### 1. Estrategista
-Prompt: reposicionar o currículo para a vaga sem inventar. `summary` de 3–4 frases falando com as prioridades da vaga; `label` alinhado ao cargo sem prometer o que não tem; todas as posições mantidas, mais relevante primeiro dentro de cada uma; bullets com verbo de ação/STAR e terminologia da vaga só onde houver evidência; `skills` reordenadas sem adicionar o que a vaga cita e as fontes não mostram. Densidade de palavras-chave (ATS): extraia da vaga a lista de termos técnicos e de responsabilidade (ex.: "integração entre sistemas", "decisões técnicas", "referência técnica", "segurança de aplicações") e use cada um que for verdadeiro no `summary`, em pelo menos um bullet e em `skills` (pode nomear a skill com o termo da vaga quando for o mesmo conceito, ex.: "Integração entre Sistemas" para REST + filas). Termo sem evidência não entra em lugar nenhum. `projects` não repete bullets da experiência palavra por palavra: descreva o problema, a solução técnica e as tecnologias. Schema igual a `data/<p>/resume.json`. Voz pt-BR: primeira pessoa no passado ("Desenvolvi", "Liderei"), nunca terceira pessoa, nada em inglês além de nomes de tecnologia (en: "Developed", "Led").
+Prompt: reposicionar o currículo para a vaga sem inventar. `summary` de 3–4 frases falando com as prioridades da vaga; `label` alinhado ao cargo sem prometer o que não tem; todas as posições mantidas, mais relevante primeiro dentro de cada uma; bullets com verbo de ação/STAR e terminologia da vaga só onde houver evidência; `skills` reordenadas sem adicionar o que a vaga cita e as fontes não mostram. Densidade de palavras-chave (ATS): extraia da vaga a lista de termos técnicos e de responsabilidade (ex.: "integração entre sistemas", "decisões técnicas", "referência técnica", "segurança de aplicações") e use cada um que for verdadeiro no `summary`, em pelo menos um bullet e em `skills` (pode nomear a skill com o termo da vaga quando for o mesmo conceito, ex.: "Integração entre Sistemas" para REST + filas). Termo que só aparece como competência listada, sem experiência que mostre uso, fica só em `skills`: não entra em bullet nem no resumo. Termo sem evidência não entra em lugar nenhum. `projects` não repete bullets da experiência palavra por palavra: descreva o problema, a solução técnica e as tecnologias. Schema igual a `data/<p>/resume.json`. Voz pt-BR: primeira pessoa no passado ("Desenvolvi", "Liderei"), nunca terceira pessoa, frases em português. Podem ficar em inglês: nomes de tecnologia, nomes de cargo oficiais (ex.: "Software Engineer", que o mercado brasileiro usa) e jargão técnico sem tradução corrente (ex.: "pull request", "deploy"). Ao traduzir um cargo, use a forma que a pessoa usa no próprio currículo; se não houver pista de gênero, mantenha o cargo original em inglês. Voz en: "Developed", "Led".
 
 ### 2 ⇄ 3. Gerente e Editor (loop, até 3 revisões)
 - **Gerente** (sempre um subagente novo, que não escreveu o currículo; sem subagentes, siga a regra de troca de papel acima): avaliar como gerente de contratação crítico. Nota 1–10, 3–5 forças, 3–5 lacunas com como tratar de forma verdadeira, palavras-chave ausentes, 2–3 sugestões de apresentação. Só vale evidência escrita no currículo e sustentada pelas fontes; requisito sem evidência fica lacuna e não sobe nota. Última linha exatamente `FINAL_RATING: X.X`.
-- Você lê a nota. Se ≥ 8.5, sai do loop. Antes de cada revisão, guarde uma cópia (`json/resume_round_N.json`).
+- Você lê a nota. Logo depois de cada avaliação N, guarde a versão avaliada em `json/resume_round_N.json` (inclusive a última). Se ≥ 8.5, sai do loop.
 - **Editor**: aplicar o feedback no JSON sem fabricar (lacuna real continua lacuna), mesmas posições e mesma contagem de `work`, nada de métrica nova. Gera também `coverage_review.md`: por posição, temas das fontes → bullets finais, e omissões (zero de evidência profissional).
-- Pare quando: nota ≥ 8.5; ou uma revisão não sobe a nota; ou 3 revisões. Restaure a versão de **melhor nota** para `json/resume.json`.
+- Pare quando: nota ≥ 8.5; ou uma revisão não sobe a nota; ou 3 revisões. Restaure a versão de **melhor nota** para `json/resume.json`; em empate, fique com a mais recente.
 
 Depois do loop, antes de renderizar, confira você mesmo o JSON: nenhum verbo em terceira pessoa ("Implementou", "Atuou"), e nomes de categoria em `skills` com no máximo ~15 caracteres (ex.: "Backend", "Mensageria e BD", "Segurança"), porque nomes longos quebram a coluna do PDF.
 
