@@ -1,11 +1,11 @@
 ---
 name: meu-emprego
-description: Gera currículo sob medida para uma vaga (JSON → LaTeX → PDF), com avaliação de aderência, revisão de cobertura e preparação de entrevista, com 5 agentes (Estrategista, Gerente, Editor, Candidato, Coach) rodando como subagentes do Claude, sem chave de API. Use quando o usuário colar uma vaga e pedir currículo, adaptar currículo, "faz pra essa vaga", preparar entrevista, ou extrair currículo de PDFs para data/<pessoa>/resume.json.
+description: Gera currículo sob medida para uma vaga (JSON → LaTeX → PDF), com avaliação de aderência, revisão de cobertura e preparação de entrevista, com 5 agentes (Estrategista, Gerente, Editor, Candidato, Coach) que funcionam em qualquer assistente de IA com acesso a arquivos (Claude Code, Codex, Gemini CLI, Cursor e similares), sem chave de API extra. Use quando o usuário colar uma vaga e pedir currículo, adaptar currículo, "faz pra essa vaga", preparar entrevista, ou extrair currículo de PDFs para data/<pessoa>/resume.json.
 ---
 
-# meu-emprego: currículo sob medida feito pelo Claude
+# meu-emprego: currículo sob medida com 5 agentes de IA
 
-Você orquestra 5 agentes (subagentes) que fazem todo o trabalho de texto. O único código executado é o renderizador de PDF em `scripts/render.py` desta skill (Python + `reportlab`; usa `pdflatex` se estiver instalado).
+Você orquestra 5 agentes que fazem todo o trabalho de texto. Funciona com qualquer modelo (Claude, GPT, Gemini, Grok...). O único código executado é o renderizador de PDF em `scripts/render.py` desta skill (Python + `reportlab`; usa `pdflatex` se estiver instalado).
 
 Área de trabalho = diretório atual da sessão. Use as pastas `input/<p>/` (arquivos do usuário), `data/<p>/` (base) e `outputs/<p>/` (resultados); crie se não existirem. Esses dados são pessoais: se o diretório for um repositório git, garanta que `input/`, `data/` e `outputs/` estejam no `.gitignore`.
 
@@ -35,7 +35,7 @@ Com PDF e vaga em mãos, siga todas as etapas abaixo sem parar para perguntar.
 
 ## Etapa 0: base (só se `data/<p>/resume.json` não existir ou o usuário pedir para refazer)
 
-1. Leia todos os PDF/DOCX de `input/<p>/` (Read tool) e o `profile_truth.md`, se houver.
+1. Leia todos os PDF/DOCX de `input/<p>/` (com a ferramenta de leitura de arquivos que você tiver; se não ler PDF, extraia o texto com `python -c "import fitz,sys;print(''.join(p.get_text() for p in fitz.open(sys.argv[1])))" arquivo.pdf`) e o `profile_truth.md`, se houver.
 2. Escreva `data/<p>/resume.json` no schema JSON Resume usado pelo projeto : `basics`, `work[{name,position,location,startDate,endDate,highlights}]`, `education`, `skills[{name,keywords}]`, `certificates`, `projects`, `languages`, `interests`. Datas `AAAA-MM`; atual = `"Present"`.
 3. Avise que rodar de novo sobrescreve correções manuais. Peça ao usuário para revisar.
 
@@ -45,9 +45,14 @@ Com PDF e vaga em mãos, siga todas as etapas abaixo sem parar para perguntar.
 2. Slug da pasta: `<cargo>_<empresa>` em snake_case ASCII (ex.: `backend_java_foursys`). Saída em `outputs/<p>/<slug>/` com `json/`, `latex/`, `pdf/`.
 3. Idioma: `pt-BR` por padrão; inglês se o usuário pedir ou a vaga for em inglês e ele confirmar.
 
-## Os 5 agentes (subagentes)
+## Os 5 agentes
 
-Cada papel roda como um **subagente separado** (Agent tool, `subagent_type: "general-purpose"`), na ordem abaixo, igual à CLI. Você é o orquestrador: passa caminhos de arquivo (não o conteúdo), espera cada um terminar, confere o arquivo que ele gerou e chama o próximo. Todo prompt de subagente começa com a "Regra de ouro" acima copiada na íntegra, mais: pessoa `<p>`, pasta de saída, idioma, e os caminhos de `profile_truth.md`, `data/<p>/resume.json`, PDFs em `input/<p>/` e `input/<p>/job_desc.md`.
+**Como rodar cada agente, conforme a ferramenta:**
+- **Com subagentes** (ex.: Agent/Task tool no Claude Code, ou o recurso equivalente da sua ferramenta, se houver): cada papel é um subagente separado, na ordem abaixo. É o modo recomendado, porque o Gerente avalia sem ter escrito o currículo.
+- **Sem subagentes:** faça os papéis em sequência, você mesmo. Ao trocar de papel, declare o papel novo, releia os arquivos do disco (não confie na memória do que escreveu) e, como Gerente, avalie com olhar de quem não escreveu: procure afirmações sem fonte antes de procurar qualidades.
+- **Chat sem arquivos** (ChatGPT, Gemini ou Grok no navegador): use `prompts/00-prompt-unico.md` na raiz do repositório.
+
+Você é o orquestrador: passa caminhos de arquivo (não o conteúdo), espera cada um terminar, confere o arquivo que ele gerou e chama o próximo. Todo prompt de subagente começa com a "Regra de ouro" acima copiada na íntegra, mais: pessoa `<p>`, pasta de saída, idioma, e os caminhos de `profile_truth.md`, `data/<p>/resume.json`, PDFs em `input/<p>/` e `input/<p>/job_desc.md`.
 
 | # | Agente | Lê | Escreve |
 |---|---|---|---|
@@ -61,7 +66,7 @@ Cada papel roda como um **subagente separado** (Agent tool, `subagent_type: "gen
 Prompt: reposicionar o currículo para a vaga sem inventar. `summary` de 3–4 frases falando com as prioridades da vaga; `label` alinhado ao cargo sem prometer o que não tem; todas as posições mantidas, mais relevante primeiro dentro de cada uma; bullets com verbo de ação/STAR e terminologia da vaga só onde houver evidência; `skills` reordenadas sem adicionar o que a vaga cita e as fontes não mostram. Densidade de palavras-chave (ATS): extraia da vaga a lista de termos técnicos e de responsabilidade (ex.: "integração entre sistemas", "decisões técnicas", "referência técnica", "segurança de aplicações") e use cada um que for verdadeiro no `summary`, em pelo menos um bullet e em `skills` (pode nomear a skill com o termo da vaga quando for o mesmo conceito, ex.: "Integração entre Sistemas" para REST + filas). Termo sem evidência não entra em lugar nenhum. `projects` não repete bullets da experiência palavra por palavra: descreva o problema, a solução técnica e as tecnologias. Schema igual a `data/<p>/resume.json`. Voz pt-BR: primeira pessoa no passado ("Desenvolvi", "Liderei"), nunca terceira pessoa, nada em inglês além de nomes de tecnologia (en: "Developed", "Led").
 
 ### 2 ⇄ 3. Gerente e Editor (loop, até 3 revisões)
-- **Gerente** (sempre um subagente novo, que não escreveu o currículo): avaliar como gerente de contratação crítico. Nota 1–10, 3–5 forças, 3–5 lacunas com como tratar de forma verdadeira, palavras-chave ausentes, 2–3 sugestões de apresentação. Só vale evidência escrita no currículo e sustentada pelas fontes; requisito sem evidência fica lacuna e não sobe nota. Última linha exatamente `FINAL_RATING: X.X`.
+- **Gerente** (sempre um subagente novo, que não escreveu o currículo; sem subagentes, siga a regra de troca de papel acima): avaliar como gerente de contratação crítico. Nota 1–10, 3–5 forças, 3–5 lacunas com como tratar de forma verdadeira, palavras-chave ausentes, 2–3 sugestões de apresentação. Só vale evidência escrita no currículo e sustentada pelas fontes; requisito sem evidência fica lacuna e não sobe nota. Última linha exatamente `FINAL_RATING: X.X`.
 - Você lê a nota. Se ≥ 8.5, sai do loop. Antes de cada revisão, guarde uma cópia (`json/resume_round_N.json`).
 - **Editor**: aplicar o feedback no JSON sem fabricar (lacuna real continua lacuna), mesmas posições e mesma contagem de `work`, nada de métrica nova. Gera também `coverage_review.md`: por posição, temas das fontes → bullets finais, e omissões (zero de evidência profissional).
 - Pare quando: nota ≥ 8.5; ou uma revisão não sobe a nota; ou 3 revisões. Restaure a versão de **melhor nota** para `json/resume.json`.

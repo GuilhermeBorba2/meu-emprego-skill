@@ -1,6 +1,7 @@
 """Render <out_dir>/json/resume.json to LaTeX + PDF.
 
 Usage: python -X utf8 <skill-dir>/scripts/render.py outputs/<person>/<slug>
+       python -X utf8 <skill-dir>/scripts/render.py caminho/resume.json
 Uses pdflatex if installed; otherwise falls back to reportlab.
 """
 import json
@@ -25,8 +26,11 @@ def file_stem(json_path: Path) -> str:
 def main() -> None:
     if len(sys.argv) != 2:
         sys.exit(__doc__)
-    out = Path(sys.argv[1]).resolve()
-    json_path = out / "json" / "resume.json"
+    arg = Path(sys.argv[1]).resolve()
+    if arg.suffix.lower() == ".json":  # a resume.json pasted from a web chat
+        json_path, out = arg, arg.parent
+    else:  # outputs/<person>/<slug> folder
+        json_path, out = arg / "json" / "resume.json", arg
     if not json_path.exists():
         sys.exit(f"Not found: {json_path}")
     (out / "latex").mkdir(parents=True, exist_ok=True)
